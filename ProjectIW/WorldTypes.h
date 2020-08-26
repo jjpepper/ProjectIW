@@ -44,6 +44,6 @@ enum WorldNodeStages
 };
 
 // Uniform resolution of a chunk
-#define NODE_CHUNK_RESOLUTION 8
+#define NODE_CHUNK_RESOLUTION 32
 //How many chunks to have before a LOD split
-#define NODE_LOD_THRESHOLD 1.0f
+#define NODE_LOD_THRESHOLD 16.0f

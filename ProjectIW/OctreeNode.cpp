@@ -3,6 +3,8 @@
 #include "World.h"
 #include "Tables.h"
 #include <set>
+#include <iostream>
+#include <fstream>
 
 namespace MDC
 {
@@ -33,6 +35,188 @@ namespace MDC
 			delete[] vertices;
 			vertices = 0;
 		}
+	}
+
+	template <typename T>
+	void ReadPod(std::istream& is, T& x)
+	{
+		is.read((char*)&x, sizeof(x));
+	}
+
+	bool OctreeNode::ConstructFromDcfFile(const std::filesystem::path& dcfPath)
+	{
+		std::ifstream is(dcfPath);
+		char version[10];
+		is.read(version, 10);
+		if (strcmp(version, "multisign") != 0)
+		{
+			std::cout << "Error reading file '" << dcfPath << "': incorrect header\n";
+			return false;
+		}
+		int32_t size;
+		int32_t tempSize;
+		ReadPod(is, size);
+		ReadPod(is, tempSize);
+		assert(tempSize == size);
+		ReadPod(is, tempSize);
+		assert(tempSize == size);
+		int32_t maxDepth = 0;
+		int32_t temp = 1;
+		while (temp < size)
+		{
+			maxDepth++;
+			temp <<= 1;
+		}
+		printf("Dimensions: %d Depth: %d\n", size, maxDepth);
+		
+		// recursive reader
+		return ConstructFromDcf(is);
+	}
+
+	bool OctreeNode::ConstructFromDcf(std::istream& is)
+	{
+		int32_t type;
+		ReadPod(is, type);
+		if (type == 2) // leaf node
+		{
+			assert(size == 1);
+			return ConstructLeafFromDcf(is);
+		}
+		else if (type == 1) // empty node
+		{
+			int16_t sg;
+			ReadPod(is, sg); // throws sign away, so don't need to calc for empty nodes
+			return false;
+		}
+		else if (type == 0) // internal node
+		{
+			is_leaf = false;
+			unsigned int child_size = size / 2;
+			bool has_children = false;
+
+			OctreeNode temp_node;
+			for (int i = 0; i < 8; i++)
+			{
+				XMINT3 child_pos = XMINT3(position.x + i / 4 * child_size * scale, position.y + i % 4 / 2 * child_size * scale, position.z + i % 2 * child_size * scale);
+				temp_node = OctreeNode(child_pos, child_size, false, scale);
+				temp_node.child_index = i;
+				if (!temp_node.ConstructFromDcf(is))
+				{
+					children[i] = nullptr;
+					continue;
+				}
+
+				has_children = true;
+				children[i] = new OctreeNode(child_pos, child_size, false, scale);
+				memcpy(children[i], &temp_node, sizeof(temp_node));
+
+			}
+
+			ZeroMemory(&temp_node, sizeof(temp_node));
+			if (!has_children)
+				is_leaf = true;
+
+			return has_children;
+		}
+	}
+
+	bool OctreeNode::ConstructLeafFromDcf(std::istream& is)
+	{
+		if (size != 1)
+			return false;
+
+		is_leaf = true;
+		corners = 0;
+		float samples[8];
+
+		// Leaf node
+		int16_t sign;
+		for (int32_t i = 0; i < 8; i++)
+		{
+			ReadPod(is, sign);
+			if (sign != 0)
+			{
+				corners |= (1 << i);
+			}
+		}
+
+		if (corners == 0 || corners == 255) // should have been an empty cell
+		{
+			vertex_count = 0;
+			return false;
+		}
+
+		int v_edges[4][12]; //the edges corresponding to each vertex
+
+		int v_index = 0;
+		int e_index = 0;
+		Vector3 vpos((float)position.x, (float)position.y, (float)position.z);
+
+		for (int e = 0; e < 16; e++)
+		{
+			int code = edge_table[corners][e];
+			if (code == -2)
+			{
+				v_edges[v_index++][e_index] = -1;
+				break;
+			}
+			if (code == -1)
+			{
+				v_edges[v_index++][e_index] = -1;
+				e_index = 0;
+				continue;
+			}
+
+			v_edges[v_index][e_index++] = code;
+		}
+
+		vertices = new Vertex[v_index];
+		vertex_count = v_index;
+
+		for (int i = 0; i < v_index; i++)
+		{
+			int k = 0;
+			Vec3 pos;
+			Vector3 mpos;
+			Vector3 normal(0, 0, 0);
+			QEFSolver qef;
+			int ei[12] = { 0 };
+			while (v_edges[i][k] != -1)
+			{
+				ei[v_edges[i][k]] = 1;
+				Vector3 a = vpos + corner_deltas_f[edge_pairs[v_edges[i][k]][0]] * (float)size * (float)scale;
+				Vector3 b = vpos + corner_deltas_f[edge_pairs[v_edges[i][k]][1]] * (float)size * (float)scale;
+				//Vector3 intersection = World::GetIntersection(a, b, samples[edge_pairs[v_edges[i][k]][0]], samples[edge_pairs[v_edges[i][k]][1]]);
+				Vector3 intersection = World::GetIntersection(a, b, 2);
+
+				Vector3 n = World::GetNormal(intersection, scale);
+				normal += n;
+				mpos += intersection;
+				qef.add(intersection.x, intersection.y, intersection.z, n.x, n.y, n.z);
+				k++;
+			}
+
+			assert(k != 0);
+			mpos /= (float)k;
+			normal /= (float)k;
+			normal.Normalize();
+			/* If this is enabled, the normal quality is much lower */
+			//normal = World::GetNormal(pos, scale);
+
+			this->vertices[i].index = -1; //this gets set during the vertex buffer generation
+			this->vertices[i].parent = 0;
+			this->vertices[i].error = 0;// = qef.solve(pos, 1e-6f, 4, 1e-6f);
+			//this->vertices[i].position = Vector3(pos.x, pos.y, pos.z);
+			this->vertices[i].normal = normal;
+			this->vertices[i].euler = 1;
+			this->vertices[i].in_cell = this->child_index;
+			this->vertices[i].flags |= VertexFlags::COLLAPSIBLE | VertexFlags::FACEPROP2;
+
+			memcpy(this->vertices[i].eis, ei, sizeof(int) * 12);
+			memcpy(&this->vertices[i].qef, &qef, sizeof(qef));
+		}
+
+		return true;
 	}
 
 	bool OctreeNode::ConstructNodes()

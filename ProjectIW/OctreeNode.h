@@ -5,6 +5,8 @@
 #include "General.h"
 #include "SimpleMath.h"
 #include "VertexPositionColorNormal.h"
+#include <filesystem>
+
 
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
@@ -33,6 +35,10 @@ namespace MDC
 		static void ClusterEdge(OctreeNode** nodes, int direction, int& surface_index, std::vector<Vertex*>& collected_vertices);
 		static void ClusterIndexes(OctreeNode** nodes, int direction, int& max_surface_index, std::vector<Vertex*>& collected_vertices);
 		static void AssignSurface(std::vector<Vertex*>& vertices, int from, int to);
+
+		bool ConstructFromDcfFile(const std::filesystem::path& dcfPath);
+		bool ConstructFromDcf(std::istream& is);
+		bool ConstructLeafFromDcf(std::istream& is);
 
 
 		OctreeNode* children[8];

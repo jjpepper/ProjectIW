@@ -11,7 +11,7 @@
 
 float World::global_size = 0.0f;
 float World::global_size_inverse = 0.0f;
-int World::sample_type = USE_HEIGHTMAP;
+int World::sample_type = USE_FRACTAL_3D;
 float World::terrain_scale = 0.0005f;
 float World::terrain_height = 1024.0f;
 

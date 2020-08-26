@@ -35,10 +35,11 @@ namespace MDC
 	{
 		auto start = std::chrono::high_resolution_clock::now();
 
-		octree->ConstructNodes();
+		//octree->ConstructNodes();
+		octree->ConstructFromDcfFile("O:\\CalculateDcfFromTin\\Cos\\15_9_1_octree.dcf");
 		empty = octree->is_leaf;
 		
-		//octree->ClusterCellBase(0.0f);
+		octree->ClusterCellBase(1.0f);
 		std::vector<VertexPositionColorNormal> verts;
 		octree->GenerateVertexBuffer(verts);
 		if (verts.size() > 0)
