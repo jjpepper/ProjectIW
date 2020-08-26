@@ -43,7 +43,7 @@ namespace MDC
 		is.read((char*)&x, sizeof(x));
 	}
 
-	bool OctreeNode::ConstructFromDcfFile(const std::filesystem::path& dcfPath)
+	bool OctreeNode::ConstructFromDcfFile(const char* dcfPath)
 	{
 		std::ifstream is(dcfPath);
 		char version[10];
